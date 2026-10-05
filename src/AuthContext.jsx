@@ -1,55 +1,99 @@
-import { createContext, useContext, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 const API = "https://fsa-jwt-practice.herokuapp.com";
 
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState();
+  const [token, setToken] = useState(null);
   const [location, setLocation] = useState("GATE");
-  const [message, setMessage] = useState()
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState("");
 
-  // TODO: signup
-  const signup = async (newUser)=>{
-    try {
-      const req = await fetch('https://fsa-jwt-practice.herokuapp.com/signup', {
-        method:"POST",
-        headers :{ 
-                  "Content-Type": "application/json" 
-                },
-        body:JSON.stringify(newUser)
-      })
-      const res = await req.json()
-      setToken(res.token)
-      setMessage(res.message)
-      setLocation("TABLET")
-    } catch (error) {
-      console.log(error.message)
+  useEffect(() => {
+    const savedToken = sessionStorage.getItem("token");
+
+    if (savedToken) {
+      setToken(savedToken);
+      setLocation("TABLET");
     }
-  }
+  }, []);
 
-  // TODO: authenticate
+  const signup = async (username) => {
+    setError("");
+    setMessage("");
 
-  const authenticate = async()=>{
-    const req = await fetch('https://fsa-jwt-practice.herokuapp.com/authenticate',  { 
-        method: "GET", 
-        headers: { 
+    try {
+      const response = await fetch(`${API}/signup`, {
+        method: "POST",
+        headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}` 
-        }
-    })
-    const data = await req.json()
-    setMessage(data.message)
-    setLocation("TUNNEL")
+        },
+        body: JSON.stringify({ username }),
+      });
 
-  }
+      const data = await response.json();
 
-  const value = { location, signup, authenticate };
+      if (!response.ok) {
+        throw new Error(data.message || "Unable to register.");
+      }
+
+      setToken(data.token);
+      sessionStorage.setItem("token", data.token);
+      setMessage(data.message);
+      setLocation("TABLET");
+    } catch (error) {
+      setError(error.message);
+    }
+  };
+
+  const authenticate = async () => {
+    if (!token) {
+      throw new Error("No authentication token found. Please register again.");
+    }
+
+    setError("");
+    setMessage("");
+
+    try {
+      const response = await fetch(`${API}/authenticate`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || "Authentication failed.");
+      }
+
+      setMessage(data.message);
+      setLocation("TUNNEL");
+    } catch (error) {
+      setError(error.message);
+    }
+  };
+
+  const value = {
+    token,
+    location,
+    message,
+    error,
+    signup,
+    authenticate,
+  };
+
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) throw Error("useAuth must be used within an AuthProvider");
+
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
+  }
+
   return context;
 }
